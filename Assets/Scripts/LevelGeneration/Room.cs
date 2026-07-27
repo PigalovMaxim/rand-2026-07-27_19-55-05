@@ -22,6 +22,14 @@ namespace Roguelike.LevelGeneration
 
         public Vector2Int Center => new(X + Width / 2, Y + Height / 2);
 
+        public bool Contains(int x, int y)
+        {
+            return x >= X
+                && x < X + Width
+                && y >= Y
+                && y < Y + Height;
+        }
+
         public int GetGapDistanceTo(Room other)
         {
             var deltaX = Mathf.Max(0, Mathf.Max(X - (other.X + other.Width), other.X - (X + Width)));

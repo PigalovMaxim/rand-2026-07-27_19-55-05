@@ -25,12 +25,15 @@ namespace Roguelike.LevelGeneration.Editor
         {
             var floorTile = AssetDatabase.LoadAssetAtPath<TileBase>("Assets/Tiles/FloorTile.asset");
             var wallTile = AssetDatabase.LoadAssetAtPath<TileBase>("Assets/Tiles/WallTile.asset");
+            var startFloorTile = AssetDatabase.LoadAssetAtPath<TileBase>("Assets/Tiles/StartFloorTile.asset");
+            var bossFloorTile = AssetDatabase.LoadAssetAtPath<TileBase>("Assets/Tiles/BossFloorTile.asset");
+            var itemFloorTile = AssetDatabase.LoadAssetAtPath<TileBase>("Assets/Tiles/ItemFloorTile.asset");
 
-            if (floorTile == null || wallTile == null)
+            if (floorTile == null || wallTile == null || startFloorTile == null || bossFloorTile == null || itemFloorTile == null)
             {
                 EditorUtility.DisplayDialog(
                     "Level Generation",
-                    "Не найдены Assets/Tiles/FloorTile.asset или WallTile.asset.",
+                    "Не найдены тайлы в Assets/Tiles/.",
                     "OK");
                 return;
             }
@@ -38,7 +41,14 @@ namespace Roguelike.LevelGeneration.Editor
             var grid = FindOrCreateGrid();
             var floorTilemap = FindOrCreateTilemap(grid.transform, "Floor", 0);
             var wallTilemap = FindOrCreateTilemap(grid.transform, "Wall", 1);
-            var levelGenerator = FindOrCreateLevelGenerator(floorTilemap, wallTilemap, floorTile, wallTile);
+            var levelGenerator = FindOrCreateLevelGenerator(
+                floorTilemap,
+                wallTilemap,
+                floorTile,
+                wallTile,
+                startFloorTile,
+                bossFloorTile,
+                itemFloorTile);
             ConfigureCamera();
             ConfigureGlobalLight();
 
@@ -119,7 +129,10 @@ namespace Roguelike.LevelGeneration.Editor
             Tilemap floorTilemap,
             Tilemap wallTilemap,
             TileBase floorTile,
-            TileBase wallTile)
+            TileBase wallTile,
+            TileBase startFloorTile,
+            TileBase bossFloorTile,
+            TileBase itemFloorTile)
         {
             var existing = Object.FindFirstObjectByType<LevelGenerator>();
             GameObject generatorObject;
@@ -140,7 +153,11 @@ namespace Roguelike.LevelGeneration.Editor
             serializedGenerator.FindProperty("wallTilemap").objectReferenceValue = wallTilemap;
             serializedGenerator.FindProperty("floorTile").objectReferenceValue = floorTile;
             serializedGenerator.FindProperty("wallTile").objectReferenceValue = wallTile;
+            serializedGenerator.FindProperty("startFloorTile").objectReferenceValue = startFloorTile;
+            serializedGenerator.FindProperty("bossFloorTile").objectReferenceValue = bossFloorTile;
+            serializedGenerator.FindProperty("itemFloorTile").objectReferenceValue = itemFloorTile;
             serializedGenerator.FindProperty("roomCount").intValue = 8;
+            serializedGenerator.FindProperty("itemRoomCount").intValue = 1;
             serializedGenerator.FindProperty("generateOnStart").boolValue = true;
             serializedGenerator.FindProperty("useRandomSeed").boolValue = true;
             serializedGenerator.ApplyModifiedPropertiesWithoutUndo();
