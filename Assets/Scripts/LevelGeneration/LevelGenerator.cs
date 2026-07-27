@@ -7,7 +7,8 @@ namespace Roguelike.LevelGeneration
     /// <summary>
     /// Процедурная генерация уровня из комнат и коридоров.
     /// </summary>
-    public sealed class LevelGenerator : MonoBehaviour
+    [DefaultExecutionOrder(50)]
+    public sealed partial class LevelGenerator : MonoBehaviour
     {
         private const string FloorTilemapName = "Floor";
         private const string WallTilemapName = "Wall";
@@ -18,6 +19,8 @@ namespace Roguelike.LevelGeneration
         private const string BossFloorTileResourcePath = "Tiles/BossFloorTile";
         private const string ItemFloorTileResourcePath = "Tiles/ItemFloorTile";
         private const string ItemsRootName = "LevelItems";
+        private const string WallCollidersRootName = "WallColliders";
+        private const string WallCompositeObjectName = "WallComposite";
 
         [Header("Комнаты")]
         [SerializeField]
@@ -30,20 +33,20 @@ namespace Roguelike.LevelGeneration
 
         [SerializeField]
         [Min(3)]
-        private int minRoomSize = 4;
+        private int minRoomSize = 6;
 
         [SerializeField]
         [Min(3)]
-        private int maxRoomSize = 10;
+        private int maxRoomSize = 12;
 
         [Header("Карта")]
         [SerializeField]
         [Min(20)]
-        private int mapWidth = 80;
+        private int mapWidth = 48;
 
         [SerializeField]
         [Min(20)]
-        private int mapHeight = 60;
+        private int mapHeight = 32;
 
         [SerializeField]
         [Min(1)]
@@ -66,6 +69,9 @@ namespace Roguelike.LevelGeneration
 
         [SerializeField]
         private bool generateOnStart = true;
+
+        [SerializeField]
+        private bool anchorGenerationToPlayer = true;
 
         [Header("Визуализация")]
         [SerializeField]
@@ -95,6 +101,8 @@ namespace Roguelike.LevelGeneration
         [SerializeField]
         private Transform itemsRoot;
 
+        private Transform wallCollidersRoot;
+
         private TileBase runtimeFloorTile;
         private TileBase runtimeWallTile;
         private TileBase runtimeStartFloorTile;
@@ -108,6 +116,7 @@ namespace Roguelike.LevelGeneration
         public IReadOnlyList<Room> ItemRooms => generatedItemRooms;
         public Room StartRoom { get; private set; }
         public Room BossRoom { get; private set; }
+        public IReadOnlyList<Room> GeneratedRooms { get; private set; }
 
         private void Start()
         {
@@ -126,8 +135,12 @@ namespace Roguelike.LevelGeneration
             }
 
             ApplySeed();
+            ResetGridPosition();
+            DisableLegacyArenaEarly();
             ClearTilemaps();
+            ClearWallColliders();
             ClearSpawnedItems();
+            ClearSpawnedEnemies();
 
             var map = new DungeonMap(mapWidth, mapHeight);
             var rooms = PlaceRooms(map);
@@ -152,15 +165,27 @@ namespace Roguelike.LevelGeneration
             }
 
             RenderMap(map, rooms, startRoomIndex, bossRoomIndex, itemRoomIndexes);
+
+            if (anchorGenerationToPlayer)
+            {
+                AlignGridToPlayer();
+            }
+
+            BuildPerimeterWallColliders(map);
+
             SpawnItems(generatedItemRooms);
+            GeneratedRooms = new List<Room>(rooms);
+            FinalizeGameplay(rooms, startRoomIndex);
 
             Debug.Log(
                 $"LevelGenerator: сгенерировано комнат {rooms.Count}, карта {mapWidth}x{mapHeight}. " +
-                $"Старт {StartRoom.Center}, босс {BossRoom.Center}, комнат с предметом {generatedItemRooms.Count}.");
+                $"Старт {StartRoom.Center}, босс {BossRoom.Center}, комнат с предметом {generatedItemRooms.Count}, " +
+                $"врагов ~{CountSpawnedEnemies(rooms, startRoomIndex)}.");
         }
 
         private bool EnsureReferences()
         {
+            EnsureGridInfrastructure();
             ResolveTilemaps();
             ResolveTiles();
 
@@ -181,6 +206,12 @@ namespace Roguelike.LevelGeneration
 
         private void ResolveTilemaps()
         {
+            if (!IsValidTilemapReference(floorTilemap) || !IsValidTilemapReference(wallTilemap))
+            {
+                floorTilemap = null;
+                wallTilemap = null;
+            }
+
             if (floorTilemap != null && wallTilemap != null)
             {
                 return;
@@ -289,7 +320,12 @@ namespace Roguelike.LevelGeneration
 
             if (wallTile == null)
             {
-                wallTile = GetOrCreateRuntimeTile(ref runtimeWallTile, new Color(0.18f, 0.18f, 0.22f));
+                wallTile = GetOrCreateRuntimeTile(ref runtimeWallTile, new Color(0.18f, 0.18f, 0.22f), withCollider: true);
+            }
+
+            if (wallTile is Tile wallTileAsset)
+            {
+                wallTileAsset.colliderType = Tile.ColliderType.Grid;
             }
 
             if (startFloorTile == null)
@@ -308,7 +344,7 @@ namespace Roguelike.LevelGeneration
             }
         }
 
-        private static TileBase GetOrCreateRuntimeTile(ref TileBase cachedTile, Color color)
+        private static TileBase GetOrCreateRuntimeTile(ref TileBase cachedTile, Color color, bool withCollider = false)
         {
             if (cachedTile != null)
             {
@@ -329,6 +365,7 @@ namespace Roguelike.LevelGeneration
             var tile = ScriptableObject.CreateInstance<Tile>();
             tile.sprite = sprite;
             tile.color = Color.white;
+            tile.colliderType = withCollider ? Tile.ColliderType.Grid : Tile.ColliderType.None;
             cachedTile = tile;
 
             return cachedTile;
@@ -498,7 +535,7 @@ namespace Roguelike.LevelGeneration
             var minSize = minRoomSize <= maxRoomSize ? minRoomSize : maxRoomSize;
             var maxSize = minRoomSize <= maxRoomSize ? maxRoomSize : minRoomSize;
 
-            if (!TryPlaceRandomRoom(map, rooms, minSize, maxSize))
+            if (!TryPlaceStartRoomAtMapCenter(map, rooms, minSize, maxSize))
             {
                 return rooms;
             }
@@ -517,6 +554,21 @@ namespace Roguelike.LevelGeneration
             }
 
             return rooms;
+        }
+
+        private bool TryPlaceStartRoomAtMapCenter(DungeonMap map, List<Room> rooms, int minSize, int maxSize)
+        {
+            var width = Random.Range(minSize, maxSize + 1);
+            var height = Random.Range(minSize, maxSize + 1);
+            var anchorX = map.Width / 2;
+            var anchorY = map.Height / 2;
+            var x = anchorX - width / 2;
+            var y = anchorY - height / 2;
+            x = Mathf.Clamp(x, 1, map.Width - width - 1);
+            y = Mathf.Clamp(y, 1, map.Height - height - 1);
+
+            AddRoom(map, rooms, new Room(x, y, width, height));
+            return true;
         }
 
         private bool TryPlaceRandomRoom(DungeonMap map, List<Room> rooms, int minSize, int maxSize)
@@ -864,6 +916,240 @@ namespace Roguelike.LevelGeneration
             }
 
             return floorTile;
+        }
+
+        private static bool IsValidTilemapReference(Tilemap tilemap)
+        {
+            return tilemap != null && tilemap.layoutGrid != null;
+        }
+
+        private void EnsureGridInfrastructure()
+        {
+            var gridObject = GameObject.Find(GridObjectName);
+            if (gridObject == null)
+            {
+                return;
+            }
+
+            if (gridObject.GetComponent<Grid>() == null)
+            {
+                gridObject.AddComponent<Grid>();
+            }
+
+            EnsureTilemapChild(gridObject.transform, FloorTilemapName, sortingOrder: 0, isWalkableFloor: true);
+            EnsureTilemapChild(gridObject.transform, WallTilemapName, sortingOrder: 1, isWalkableFloor: false);
+        }
+
+        private void EnsureTilemapChild(Transform gridTransform, string tilemapName, int sortingOrder, bool isWalkableFloor)
+        {
+            var tilemapTransform = gridTransform.Find(tilemapName);
+            if (tilemapTransform == null)
+            {
+                return;
+            }
+
+            var tilemapObject = tilemapTransform.gameObject;
+
+            if (tilemapObject.GetComponent<Tilemap>() == null)
+            {
+                tilemapObject.AddComponent<Tilemap>();
+            }
+
+            var renderer = tilemapObject.GetComponent<TilemapRenderer>();
+            if (renderer == null)
+            {
+                renderer = tilemapObject.AddComponent<TilemapRenderer>();
+            }
+
+            renderer.sortingOrder = sortingOrder;
+
+            if (isWalkableFloor)
+            {
+                var walkableLayer = LayerMask.NameToLayer("Walkable");
+                if (walkableLayer >= 0)
+                {
+                    tilemapObject.layer = walkableLayer;
+                }
+            }
+            else
+            {
+                tilemapObject.tag = "Wall";
+                DisableTilemapCollider(tilemapObject);
+            }
+        }
+
+        private static void DisableTilemapCollider(GameObject wallObject)
+        {
+            var tilemapCollider = wallObject.GetComponent<TilemapCollider2D>();
+            if (tilemapCollider != null)
+            {
+                tilemapCollider.enabled = false;
+            }
+        }
+
+        private void ClearWallColliders()
+        {
+            if (wallCollidersRoot != null)
+            {
+                Destroy(wallCollidersRoot.gameObject);
+                wallCollidersRoot = null;
+                return;
+            }
+
+            var gridTransform = GetGridTransform();
+            if (gridTransform == null)
+            {
+                return;
+            }
+
+            var existingRoot = gridTransform.Find(WallCollidersRootName);
+            if (existingRoot != null)
+            {
+                Destroy(existingRoot.gameObject);
+            }
+        }
+
+        private void BuildPerimeterWallColliders(DungeonMap map)
+        {
+            ClearWallColliders();
+
+            if (wallTilemap == null)
+            {
+                return;
+            }
+
+            DisableTilemapCollider(wallTilemap.gameObject);
+
+            var gridTransform = GetGridTransform();
+            if (gridTransform == null)
+            {
+                return;
+            }
+
+            var rootObject = new GameObject(WallCollidersRootName);
+            wallCollidersRoot = rootObject.transform;
+            wallCollidersRoot.SetParent(gridTransform, false);
+
+            var compositeObject = new GameObject(WallCompositeObjectName);
+            compositeObject.transform.SetParent(wallCollidersRoot, false);
+            compositeObject.layer = wallTilemap.gameObject.layer;
+            compositeObject.tag = "Wall";
+
+            var rigidbody = compositeObject.AddComponent<Rigidbody2D>();
+            rigidbody.bodyType = RigidbodyType2D.Static;
+
+            var compositeCollider = compositeObject.AddComponent<CompositeCollider2D>();
+            compositeCollider.geometryType = CompositeCollider2D.GeometryType.Polygons;
+
+            var cellSize = wallTilemap.layoutGrid.cellSize;
+            var colliderSize = new Vector2(cellSize.x, cellSize.y);
+            var wallCount = 0;
+
+            for (var x = 0; x < map.Width; x++)
+            {
+                for (var y = 0; y < map.Height; y++)
+                {
+                    if (!IsBlockingWall(map, x, y))
+                    {
+                        continue;
+                    }
+
+                    var cell = new Vector3Int(x, y, 0);
+                    var worldCenter = wallTilemap.GetCellCenterWorld(cell);
+
+                    var colliderObject = new GameObject($"Wall_{x}_{y}");
+                    colliderObject.transform.SetParent(compositeObject.transform, false);
+                    colliderObject.transform.position = new Vector3(worldCenter.x, worldCenter.y, 0f);
+                    colliderObject.layer = compositeObject.layer;
+                    colliderObject.tag = "Wall";
+
+                    var boxCollider = colliderObject.AddComponent<BoxCollider2D>();
+                    boxCollider.size = colliderSize;
+                    boxCollider.compositeOperation = Collider2D.CompositeOperation.Merge;
+                    wallCount++;
+                }
+            }
+
+            Physics2D.SyncTransforms();
+            Debug.Log($"LevelGenerator: создано коллайдеров стен {wallCount}.");
+        }
+
+        private static bool IsBlockingWall(DungeonMap map, int x, int y)
+        {
+            if (!map.IsInside(x, y) || map.FloorTiles[x, y])
+            {
+                return false;
+            }
+
+            for (var dx = -1; dx <= 1; dx++)
+            {
+                for (var dy = -1; dy <= 1; dy++)
+                {
+                    if (dx == 0 && dy == 0)
+                    {
+                        continue;
+                    }
+
+                    var neighborX = x + dx;
+                    var neighborY = y + dy;
+
+                    if (map.IsInside(neighborX, neighborY) && map.FloorTiles[neighborX, neighborY])
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private Transform GetGridTransform()
+        {
+            if (floorTilemap == null)
+            {
+                return null;
+            }
+
+            var parent = floorTilemap.transform.parent;
+            if (parent != null && parent.name == GridObjectName)
+            {
+                return parent;
+            }
+
+            return floorTilemap.transform;
+        }
+
+        private void ResetGridPosition()
+        {
+            var gridTransform = GetGridTransform();
+            if (gridTransform == null)
+            {
+                return;
+            }
+
+            var position = gridTransform.position;
+            gridTransform.position = new Vector3(0f, 0f, position.z);
+        }
+
+        private void AlignGridToPlayer()
+        {
+            ResolvePlayerTransform();
+
+            if (playerTransform == null)
+            {
+                return;
+            }
+
+            var gridTransform = GetGridTransform();
+            if (gridTransform == null)
+            {
+                return;
+            }
+
+            var startRoomWorldCenter = GetRoomWorldCenter(StartRoom);
+            var offset = playerTransform.position - startRoomWorldCenter;
+            offset.z = 0f;
+            gridTransform.position += offset;
         }
     }
 }
