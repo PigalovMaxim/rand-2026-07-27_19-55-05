@@ -36,6 +36,7 @@ namespace Roguelike.LevelGeneration
         [SerializeField, Min(1)] private int roomPlacementAttempts = 200;
         [SerializeField, Min(0)] private int roomPadding = 1;
         [SerializeField, Min(1)] private int corridorGap = 1;
+        [SerializeField, Min(1)] private int corridorWidth = 3;
 
         [Header("Случайность")]
         [SerializeField] private int seed;
@@ -85,6 +86,12 @@ namespace Roguelike.LevelGeneration
             ClearSpawnedItems();
             ClearSpawnedEnemies();
 
+            if (IsTestFieldEnabled())
+            {
+                GenerateTestRectangularRoom();
+                return;
+            }
+
             var map = new DungeonMap(mapWidth, mapHeight);
             var rooms = PlaceRooms(map);
 
@@ -120,6 +127,42 @@ namespace Roguelike.LevelGeneration
                 $"LevelGenerator: сгенерировано комнат {rooms.Count}, карта {mapWidth}x{mapHeight}. " +
                 $"Старт {StartRoom.Center}, босс {BossRoom.Center}, комнат с предметом {_generatedItemRooms.Count}, " +
                 $"врагов ~{CountSpawnedEnemies(rooms, startRoomIndex)}.");
+        }
+
+        private static bool IsTestFieldEnabled()
+        {
+            return Game.Instance != null && Game.Instance.TestField;
+        }
+
+        private void GenerateTestRectangularRoom()
+        {
+            var roomWidth = Mathf.Clamp(maxRoomSize, minRoomSize, mapWidth - 4);
+            var roomHeight = Mathf.Clamp(maxRoomSize, minRoomSize, mapHeight - 4);
+            var x = (mapWidth - roomWidth) / 2;
+            var y = (mapHeight - roomHeight) / 2;
+            var room = new Room(x, y, roomWidth, roomHeight);
+
+            var map = new DungeonMap(mapWidth, mapHeight);
+            map.CarveRoom(room);
+
+            var rooms = new List<Room> { room };
+            var emptyItemRooms = new List<int>();
+            StartRoom = room;
+            BossRoom = room;
+            _generatedItemRooms.Clear();
+
+            RenderMap(map, rooms, startRoomIndex: 0, bossRoomIndex: 0, emptyItemRooms);
+
+            if (anchorGenerationToPlayer)
+                AlignGridToPlayer();
+
+            BuildPerimeterWallColliders(map);
+            GeneratedRooms = rooms;
+            FinalizeGameplay(rooms, startRoomIndex: 0);
+
+            Debug.Log(
+                $"LevelGenerator: тестовый режим — прямоугольная комната {roomWidth}x{roomHeight} " +
+                $"в центре карты {mapWidth}x{mapHeight}.");
         }
 
         private bool EnsureReferences()
@@ -586,15 +629,17 @@ namespace Roguelike.LevelGeneration
 
         private void CarveCorridor(DungeonMap map, Vector2Int from, Vector2Int to)
         {
+            var thickness = Mathf.Max(1, corridorWidth);
+
             if (Random.value < 0.5f)
             {
-                map.CarveHorizontalTunnel(from.x, to.x, from.y);
-                map.CarveVerticalTunnel(to.x, from.y, to.y);
+                map.CarveHorizontalTunnel(from.x, to.x, from.y, thickness);
+                map.CarveVerticalTunnel(to.x, from.y, to.y, thickness);
             }
             else
             {
-                map.CarveVerticalTunnel(from.x, from.y, to.y);
-                map.CarveHorizontalTunnel(from.x, to.x, to.y);
+                map.CarveVerticalTunnel(from.x, from.y, to.y, thickness);
+                map.CarveHorizontalTunnel(from.x, to.x, to.y, thickness);
             }
         }
 

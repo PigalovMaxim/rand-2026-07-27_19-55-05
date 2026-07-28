@@ -36,22 +36,30 @@ namespace Roguelike.LevelGeneration
             }
         }
 
-        public void CarveHorizontalTunnel(int fromX, int toX, int y)
+        public void CarveHorizontalTunnel(int fromX, int toX, int y, int thickness = 1)
         {
             var start = fromX < toX ? fromX : toX;
             var end = fromX < toX ? toX : fromX;
+            var yStart = y - (thickness - 1) / 2;
 
             for (var x = start; x <= end; x++)
-                SetFloor(x, y);
+            {
+                for (var offset = 0; offset < thickness; offset++)
+                    SetFloor(x, yStart + offset);
+            }
         }
 
-        public void CarveVerticalTunnel(int x, int fromY, int toY)
+        public void CarveVerticalTunnel(int x, int fromY, int toY, int thickness = 1)
         {
             var start = fromY < toY ? fromY : toY;
             var end = fromY < toY ? toY : fromY;
+            var xStart = x - (thickness - 1) / 2;
 
             for (var y = start; y <= end; y++)
-                SetFloor(x, y);
+            {
+                for (var offset = 0; offset < thickness; offset++)
+                    SetFloor(xStart + offset, y);
+            }
         }
     }
 }
