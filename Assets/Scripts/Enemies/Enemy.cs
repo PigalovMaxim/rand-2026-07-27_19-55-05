@@ -26,7 +26,7 @@ public class Enemy : MonoBehaviour
         _agent.acceleration = 100f;
         _agent.autoBraking = true;
 
-        Rigidbody2D rb = GetComponent<Rigidbody2D>();
+        var rb = GetComponent<Rigidbody2D>();
         if (rb != null)
         {
             rb.bodyType = RigidbodyType2D.Kinematic;
@@ -39,7 +39,7 @@ public class Enemy : MonoBehaviour
     {
         if (target == null)
         {
-            GameObject player = GameObject.FindGameObjectWithTag("Player");
+            var player = GameObject.FindGameObjectWithTag("Player");
             if (player != null)
                 target = player.transform;
         }

@@ -44,13 +44,9 @@ namespace Roguelike.LevelGeneration
             var pointY = Mathf.Clamp(other.Center.y, Y, Y + Height - 1);
 
             if (Mathf.Abs(other.Center.x - Center.x) >= Mathf.Abs(other.Center.y - Center.y))
-            {
                 pointX = other.Center.x < Center.x ? X : X + Width - 1;
-            }
             else
-            {
                 pointY = other.Center.y < Center.y ? Y : Y + Height - 1;
-            }
 
             return new Vector2Int(pointX, pointY);
         }
