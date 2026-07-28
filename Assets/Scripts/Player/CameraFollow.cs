@@ -13,7 +13,7 @@ public class CameraFollow : MonoBehaviour
         if (target == null)
             return;
 
-        Vector3 desired = target.position + offset;
+        var desired = target.position + offset;
         transform.position = Vector3.SmoothDamp(transform.position, desired, ref _velocity, smoothTime);
     }
 }

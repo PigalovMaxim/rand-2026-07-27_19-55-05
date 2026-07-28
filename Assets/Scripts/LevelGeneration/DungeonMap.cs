@@ -24,9 +24,7 @@ namespace Roguelike.LevelGeneration
         public void SetFloor(int x, int y)
         {
             if (IsInside(x, y))
-            {
                 FloorTiles[x, y] = true;
-            }
         }
 
         public void CarveRoom(Room room)
@@ -34,9 +32,7 @@ namespace Roguelike.LevelGeneration
             for (var x = room.X; x < room.X + room.Width; x++)
             {
                 for (var y = room.Y; y < room.Y + room.Height; y++)
-                {
                     SetFloor(x, y);
-                }
             }
         }
 
@@ -46,9 +42,7 @@ namespace Roguelike.LevelGeneration
             var end = fromX < toX ? toX : fromX;
 
             for (var x = start; x <= end; x++)
-            {
                 SetFloor(x, y);
-            }
         }
 
         public void CarveVerticalTunnel(int x, int fromY, int toY)
@@ -57,9 +51,7 @@ namespace Roguelike.LevelGeneration
             var end = fromY < toY ? toY : fromY;
 
             for (var y = start; y <= end; y++)
-            {
                 SetFloor(x, y);
-            }
         }
     }
 }

@@ -18,125 +18,68 @@ namespace Roguelike.LevelGeneration
         private const string StartFloorTileResourcePath = "Tiles/StartFloorTile";
         private const string BossFloorTileResourcePath = "Tiles/BossFloorTile";
         private const string ItemFloorTileResourcePath = "Tiles/ItemFloorTile";
+        private const string ItemPrefabResourcePath = "Prefabs/Item";
+        private const string EnemyPrefabResourcePath = "Prefabs/Enemy";
         private const string ItemsRootName = "LevelItems";
         private const string WallCollidersRootName = "WallColliders";
         private const string WallCompositeObjectName = "WallComposite";
 
         [Header("Комнаты")]
-        [SerializeField]
-        [Min(2)]
-        private int roomCount = 8;
-
-        [SerializeField]
-        [Min(0)]
-        private int itemRoomCount = 1;
-
-        [SerializeField]
-        [Min(3)]
-        private int minRoomSize = 6;
-
-        [SerializeField]
-        [Min(3)]
-        private int maxRoomSize = 12;
+        [SerializeField, Min(2)] private int roomCount = 8;
+        [SerializeField, Min(0)] private int itemRoomCount = 1;
+        [SerializeField, Min(3)] private int minRoomSize = 6;
+        [SerializeField, Min(3)] private int maxRoomSize = 12;
 
         [Header("Карта")]
-        [SerializeField]
-        [Min(20)]
-        private int mapWidth = 48;
-
-        [SerializeField]
-        [Min(20)]
-        private int mapHeight = 32;
-
-        [SerializeField]
-        [Min(1)]
-        private int roomPlacementAttempts = 200;
-
-        [SerializeField]
-        [Min(0)]
-        private int roomPadding = 1;
-
-        [SerializeField]
-        [Min(1)]
-        private int corridorGap = 1;
+        [SerializeField, Min(20)] private int mapWidth = 48;
+        [SerializeField, Min(20)] private int mapHeight = 32;
+        [SerializeField, Min(1)] private int roomPlacementAttempts = 200;
+        [SerializeField, Min(0)] private int roomPadding = 1;
+        [SerializeField, Min(1)] private int corridorGap = 1;
 
         [Header("Случайность")]
-        [SerializeField]
-        private int seed;
-
-        [SerializeField]
-        private bool useRandomSeed = true;
-
-        [SerializeField]
-        private bool generateOnStart = true;
-
-        [SerializeField]
-        private bool anchorGenerationToPlayer = true;
+        [SerializeField] private int seed;
+        [SerializeField] private bool useRandomSeed = true;
+        [SerializeField] private bool generateOnStart = true;
+        [SerializeField] private bool anchorGenerationToPlayer = true;
 
         [Header("Визуализация")]
-        [SerializeField]
-        private Tilemap floorTilemap;
+        [SerializeField] private Tilemap floorTilemap;
+        [SerializeField] private Tilemap wallTilemap;
+        [SerializeField] private Transform itemsRoot;
 
-        [SerializeField]
-        private Tilemap wallTilemap;
+        private TileBase _floorTile;
+        private TileBase _wallTile;
+        private TileBase _startFloorTile;
+        private TileBase _bossFloorTile;
+        private TileBase _itemFloorTile;
+        private GameObject _itemPrefab;
+        private GameObject _enemyPrefab;
+        private Transform _wallCollidersRoot;
 
-        [SerializeField]
-        private TileBase floorTile;
-
-        [SerializeField]
-        private TileBase wallTile;
-
-        [SerializeField]
-        private TileBase startFloorTile;
-
-        [SerializeField]
-        private TileBase bossFloorTile;
-
-        [SerializeField]
-        private TileBase itemFloorTile;
-
-        [SerializeField]
-        private GameObject itemPrefab;
-
-        [SerializeField]
-        private Transform itemsRoot;
-
-        private Transform wallCollidersRoot;
-
-        private TileBase runtimeFloorTile;
-        private TileBase runtimeWallTile;
-        private TileBase runtimeStartFloorTile;
-        private TileBase runtimeBossFloorTile;
-        private TileBase runtimeItemFloorTile;
-
-        private readonly List<Room> generatedItemRooms = new();
+        private readonly List<Room> _generatedItemRooms = new();
 
         public int RoomCount => roomCount;
         public int ItemRoomCount => itemRoomCount;
-        public IReadOnlyList<Room> ItemRooms => generatedItemRooms;
+        public IReadOnlyList<Room> ItemRooms => _generatedItemRooms;
         public Room StartRoom { get; private set; }
         public Room BossRoom { get; private set; }
         public IReadOnlyList<Room> GeneratedRooms { get; private set; }
 
-        private void Start()
+        void Start()
         {
             if (generateOnStart)
-            {
                 Generate();
-            }
         }
 
         [ContextMenu("Generate Level")]
         public void Generate()
         {
             if (!EnsureReferences())
-            {
                 return;
-            }
 
             ApplySeed();
             ResetGridPosition();
-            DisableLegacyArenaEarly();
             ClearTilemaps();
             ClearWallColliders();
             ClearSpawnedItems();
@@ -157,29 +100,25 @@ namespace Roguelike.LevelGeneration
             var itemRoomIndexes = FindItemRoomIndexes(rooms, startRoomIndex, bossRoomIndex, itemRoomCount);
             StartRoom = rooms[startRoomIndex];
             BossRoom = rooms[bossRoomIndex];
-            generatedItemRooms.Clear();
+            _generatedItemRooms.Clear();
 
             foreach (var itemRoomIndex in itemRoomIndexes)
-            {
-                generatedItemRooms.Add(rooms[itemRoomIndex]);
-            }
+                _generatedItemRooms.Add(rooms[itemRoomIndex]);
 
             RenderMap(map, rooms, startRoomIndex, bossRoomIndex, itemRoomIndexes);
 
             if (anchorGenerationToPlayer)
-            {
                 AlignGridToPlayer();
-            }
 
             BuildPerimeterWallColliders(map);
 
-            SpawnItems(generatedItemRooms);
+            SpawnItems(_generatedItemRooms);
             GeneratedRooms = new List<Room>(rooms);
             FinalizeGameplay(rooms, startRoomIndex);
 
             Debug.Log(
                 $"LevelGenerator: сгенерировано комнат {rooms.Count}, карта {mapWidth}x{mapHeight}. " +
-                $"Старт {StartRoom.Center}, босс {BossRoom.Center}, комнат с предметом {generatedItemRooms.Count}, " +
+                $"Старт {StartRoom.Center}, босс {BossRoom.Center}, комнат с предметом {_generatedItemRooms.Count}, " +
                 $"врагов ~{CountSpawnedEnemies(rooms, startRoomIndex)}.");
         }
 
@@ -187,17 +126,23 @@ namespace Roguelike.LevelGeneration
         {
             EnsureGridInfrastructure();
             ResolveTilemaps();
-            ResolveTiles();
+            LoadResources();
 
             if (floorTilemap == null || wallTilemap == null)
             {
-                Debug.LogError("LevelGenerator: не найдены Tilemap Floor/Wall. Меню Roguelike → Setup Level Generation Scene.");
+                Debug.LogError("LevelGenerator: не найдены Tilemap Floor/Wall на сцене (Grid/Floor, Grid/Wall).");
                 return false;
             }
 
-            if (floorTile == null || wallTile == null || startFloorTile == null || bossFloorTile == null || itemFloorTile == null)
+            if (_floorTile == null || _wallTile == null || _startFloorTile == null || _bossFloorTile == null || _itemFloorTile == null)
             {
-                Debug.LogError("LevelGenerator: не найдены тайлы пола, стены, старта, босса или предмета.");
+                Debug.LogError("LevelGenerator: не найдены тайлы в Resources/Tiles.");
+                return false;
+            }
+
+            if (_itemPrefab == null || _enemyPrefab == null)
+            {
+                Debug.LogError("LevelGenerator: не найдены префабы в Resources/Prefabs.");
                 return false;
             }
 
@@ -213,9 +158,7 @@ namespace Roguelike.LevelGeneration
             }
 
             if (floorTilemap != null && wallTilemap != null)
-            {
                 return;
-            }
 
             var grid = GameObject.Find(GridObjectName);
             if (grid != null)
@@ -224,151 +167,43 @@ namespace Roguelike.LevelGeneration
                 {
                     var floor = grid.transform.Find(FloorTilemapName);
                     if (floor != null)
-                    {
                         floorTilemap = floor.GetComponent<Tilemap>();
-                    }
                 }
 
                 if (wallTilemap == null)
                 {
                     var wall = grid.transform.Find(WallTilemapName);
                     if (wall != null)
-                    {
                         wallTilemap = wall.GetComponent<Tilemap>();
-                    }
                 }
             }
 
             if (floorTilemap != null && wallTilemap != null)
-            {
                 return;
-            }
 
             var tilemaps = FindObjectsByType<Tilemap>(FindObjectsSortMode.None);
             foreach (var tilemap in tilemaps)
             {
                 if (floorTilemap == null && tilemap.name == FloorTilemapName)
-                {
                     floorTilemap = tilemap;
-                }
 
                 if (wallTilemap == null && tilemap.name == WallTilemapName)
-                {
                     wallTilemap = tilemap;
-                }
             }
         }
 
-        private void ResolveTiles()
+        private void LoadResources()
         {
-            if (floorTile == null)
-            {
-                floorTile = Resources.Load<TileBase>(FloorTileResourcePath);
-            }
+            _floorTile = Resources.Load<TileBase>(FloorTileResourcePath);
+            _wallTile = Resources.Load<TileBase>(WallTileResourcePath);
+            _startFloorTile = Resources.Load<TileBase>(StartFloorTileResourcePath);
+            _bossFloorTile = Resources.Load<TileBase>(BossFloorTileResourcePath);
+            _itemFloorTile = Resources.Load<TileBase>(ItemFloorTileResourcePath);
+            _itemPrefab = Resources.Load<GameObject>(ItemPrefabResourcePath);
+            _enemyPrefab = Resources.Load<GameObject>(EnemyPrefabResourcePath);
 
-            if (wallTile == null)
-            {
-                wallTile = Resources.Load<TileBase>(WallTileResourcePath);
-            }
-
-            if (startFloorTile == null)
-            {
-                startFloorTile = Resources.Load<TileBase>(StartFloorTileResourcePath);
-            }
-
-            if (bossFloorTile == null)
-            {
-                bossFloorTile = Resources.Load<TileBase>(BossFloorTileResourcePath);
-            }
-
-            if (itemFloorTile == null)
-            {
-                itemFloorTile = Resources.Load<TileBase>(ItemFloorTileResourcePath);
-            }
-
-#if UNITY_EDITOR
-            if (floorTile == null)
-            {
-                floorTile = UnityEditor.AssetDatabase.LoadAssetAtPath<TileBase>("Assets/Tiles/FloorTile.asset");
-            }
-
-            if (wallTile == null)
-            {
-                wallTile = UnityEditor.AssetDatabase.LoadAssetAtPath<TileBase>("Assets/Tiles/WallTile.asset");
-            }
-
-            if (startFloorTile == null)
-            {
-                startFloorTile = UnityEditor.AssetDatabase.LoadAssetAtPath<TileBase>("Assets/Tiles/StartFloorTile.asset");
-            }
-
-            if (bossFloorTile == null)
-            {
-                bossFloorTile = UnityEditor.AssetDatabase.LoadAssetAtPath<TileBase>("Assets/Tiles/BossFloorTile.asset");
-            }
-
-            if (itemFloorTile == null)
-            {
-                itemFloorTile = UnityEditor.AssetDatabase.LoadAssetAtPath<TileBase>("Assets/Tiles/ItemFloorTile.asset");
-            }
-#endif
-
-            if (floorTile == null)
-            {
-                floorTile = GetOrCreateRuntimeTile(ref runtimeFloorTile, new Color(0.55f, 0.47f, 0.35f));
-            }
-
-            if (wallTile == null)
-            {
-                wallTile = GetOrCreateRuntimeTile(ref runtimeWallTile, new Color(0.18f, 0.18f, 0.22f), withCollider: true);
-            }
-
-            if (wallTile is Tile wallTileAsset)
-            {
+            if (_wallTile is Tile wallTileAsset)
                 wallTileAsset.colliderType = Tile.ColliderType.Grid;
-            }
-
-            if (startFloorTile == null)
-            {
-                startFloorTile = GetOrCreateRuntimeTile(ref runtimeStartFloorTile, new Color(0.35f, 0.85f, 0.4f));
-            }
-
-            if (bossFloorTile == null)
-            {
-                bossFloorTile = GetOrCreateRuntimeTile(ref runtimeBossFloorTile, new Color(0.9f, 0.25f, 0.25f));
-            }
-
-            if (itemFloorTile == null)
-            {
-                itemFloorTile = GetOrCreateRuntimeTile(ref runtimeItemFloorTile, new Color(0.94f, 0.78f, 0.25f));
-            }
-        }
-
-        private static TileBase GetOrCreateRuntimeTile(ref TileBase cachedTile, Color color, bool withCollider = false)
-        {
-            if (cachedTile != null)
-            {
-                return cachedTile;
-            }
-
-            var texture = new Texture2D(1, 1, TextureFormat.RGBA32, false);
-            texture.SetPixel(0, 0, color);
-            texture.Apply();
-            texture.filterMode = FilterMode.Point;
-
-            var sprite = Sprite.Create(
-                texture,
-                new Rect(0, 0, 1, 1),
-                new Vector2(0.5f, 0.5f),
-                1f);
-
-            var tile = ScriptableObject.CreateInstance<Tile>();
-            tile.sprite = sprite;
-            tile.color = Color.white;
-            tile.colliderType = withCollider ? Tile.ColliderType.Grid : Tile.ColliderType.None;
-            cachedTile = tile;
-
-            return cachedTile;
         }
 
         private void ApplySeed()
@@ -384,14 +219,10 @@ namespace Roguelike.LevelGeneration
         private void ClearSpawnedItems()
         {
             if (itemsRoot == null)
-            {
                 return;
-            }
 
             for (var i = itemsRoot.childCount - 1; i >= 0; i--)
-            {
                 Destroy(itemsRoot.GetChild(i).gameObject);
-            }
         }
 
         private static List<int> FindItemRoomIndexes(
@@ -403,18 +234,14 @@ namespace Roguelike.LevelGeneration
             var selectedRoomIndexes = new List<int>();
 
             if (requestedItemRoomCount <= 0)
-            {
                 return selectedRoomIndexes;
-            }
 
             var eligibleRoomIndexes = new List<int>();
 
             for (var i = 0; i < rooms.Count; i++)
             {
                 if (i == startRoomIndex || i == bossRoomIndex)
-                {
                     continue;
-                }
 
                 eligibleRoomIndexes.Add(i);
             }
@@ -429,9 +256,7 @@ namespace Roguelike.LevelGeneration
             var itemRoomsToPlace = Mathf.Min(requestedItemRoomCount, eligibleRoomIndexes.Count);
 
             for (var i = 0; i < itemRoomsToPlace; i++)
-            {
                 selectedRoomIndexes.Add(eligibleRoomIndexes[i]);
-            }
 
             return selectedRoomIndexes;
         }
@@ -439,32 +264,21 @@ namespace Roguelike.LevelGeneration
         private void SpawnItems(IReadOnlyList<Room> itemRooms)
         {
             if (itemRooms.Count == 0)
-            {
                 return;
-            }
 
             var parent = GetItemsRoot();
 
             foreach (var itemRoom in itemRooms)
             {
                 var itemPosition = GetRoomWorldCenter(itemRoom);
-
-                if (itemPrefab != null)
-                {
-                    Instantiate(itemPrefab, itemPosition, Quaternion.identity, parent);
-                    continue;
-                }
-
-                CreateDefaultItem(itemPosition, parent);
+                Instantiate(_itemPrefab, itemPosition, Quaternion.identity, parent);
             }
         }
 
         private Transform GetItemsRoot()
         {
             if (itemsRoot != null)
-            {
                 return itemsRoot;
-            }
 
             var existingRoot = transform.Find(ItemsRootName);
             if (existingRoot != null)
@@ -485,44 +299,6 @@ namespace Roguelike.LevelGeneration
             return floorTilemap.GetCellCenterWorld(cell);
         }
 
-        private GameObject CreateDefaultItem(Vector3 position, Transform parent)
-        {
-            var itemObject = new GameObject("LevelItem");
-            itemObject.transform.SetParent(parent, false);
-            itemObject.transform.position = position;
-            itemObject.AddComponent<ItemPickup>();
-
-            var spriteRenderer = itemObject.AddComponent<SpriteRenderer>();
-            spriteRenderer.sprite = CreateDefaultItemSprite();
-            spriteRenderer.sortingOrder = 2;
-
-            return itemObject;
-        }
-
-        private static Sprite CreateDefaultItemSprite()
-        {
-            var texture = new Texture2D(16, 16, TextureFormat.RGBA32, false);
-            var fillColor = new Color(0.95f, 0.85f, 0.2f, 1f);
-
-            for (var x = 0; x < 16; x++)
-            {
-                for (var y = 0; y < 16; y++)
-                {
-                    var isBorder = x == 0 || y == 0 || x == 15 || y == 15;
-                    texture.SetPixel(x, y, isBorder ? Color.black : fillColor);
-                }
-            }
-
-            texture.Apply();
-            texture.filterMode = FilterMode.Point;
-
-            return Sprite.Create(
-                texture,
-                new Rect(0, 0, 16, 16),
-                new Vector2(0.5f, 0.5f),
-                16f);
-        }
-
         private void ClearTilemaps()
         {
             floorTilemap.ClearAllTiles();
@@ -536,16 +312,12 @@ namespace Roguelike.LevelGeneration
             var maxSize = minRoomSize <= maxRoomSize ? maxRoomSize : minRoomSize;
 
             if (!TryPlaceStartRoomAtMapCenter(map, rooms, minSize, maxSize))
-            {
                 return rooms;
-            }
 
             for (var i = 1; i < roomCount; i++)
             {
                 if (TryPlaceClusteredRoom(map, rooms, minSize, maxSize))
-                {
                     continue;
-                }
 
                 if (!TryPlaceRandomRoom(map, rooms, minSize, maxSize))
                 {
@@ -582,9 +354,7 @@ namespace Roguelike.LevelGeneration
                 var candidate = new Room(x, y, width, height);
 
                 if (HasOverlap(candidate, rooms))
-                {
                     continue;
-                }
 
                 AddRoom(map, rooms, candidate);
                 return true;
@@ -605,14 +375,10 @@ namespace Roguelike.LevelGeneration
                 var side = sides[Random.Range(0, sides.Length)];
 
                 if (!TryBuildAdjacentRoom(anchor, width, height, side, out var candidate))
-                {
                     continue;
-                }
 
                 if (!IsInsideMap(map, candidate) || HasOverlap(candidate, rooms))
-                {
                     continue;
-                }
 
                 AddRoom(map, rooms, candidate);
                 return true;
@@ -664,9 +430,7 @@ namespace Roguelike.LevelGeneration
             foreach (var room in rooms)
             {
                 if (candidate.Intersects(room, roomPadding))
-                {
                     return true;
-                }
             }
 
             return false;
@@ -679,9 +443,7 @@ namespace Roguelike.LevelGeneration
             var pendingRoomIndexes = new List<int>();
 
             for (var i = 1; i < rooms.Count; i++)
-            {
                 pendingRoomIndexes.Add(i);
-            }
 
             while (pendingRoomIndexes.Count > 0)
             {
@@ -695,9 +457,7 @@ namespace Roguelike.LevelGeneration
                     {
                         var distance = rooms[connectedIndex].GetGapDistanceTo(rooms[pendingIndex]);
                         if (distance >= bestDistance)
-                        {
                             continue;
-                        }
 
                         bestDistance = distance;
                         bestConnectedIndex = connectedIndex;
@@ -706,9 +466,7 @@ namespace Roguelike.LevelGeneration
                 }
 
                 if (bestConnectedIndex < 0 || bestPendingIndex < 0)
-                {
                     break;
-                }
 
                 CarveCorridorBetweenRooms(
                     map,
@@ -735,14 +493,10 @@ namespace Roguelike.LevelGeneration
             for (var i = 0; i < rooms.Count; i++)
             {
                 if (i == startRoomIndex)
-                {
                     continue;
-                }
 
                 if (distances[i] <= maxDistance)
-                {
                     continue;
-                }
 
                 maxDistance = distances[i];
                 bossRoomIndex = i;
@@ -760,9 +514,7 @@ namespace Roguelike.LevelGeneration
             var distances = new float[rooms.Count];
 
             for (var i = 0; i < distances.Length; i++)
-            {
                 distances[i] = float.PositiveInfinity;
-            }
 
             distances[startRoomIndex] = 0f;
             var visited = new bool[rooms.Count];
@@ -771,9 +523,7 @@ namespace Roguelike.LevelGeneration
             {
                 var currentIndex = GetClosestUnvisitedRoomIndex(distances, visited);
                 if (currentIndex < 0 || float.IsPositiveInfinity(distances[currentIndex]))
-                {
                     break;
-                }
 
                 visited[currentIndex] = true;
 
@@ -781,9 +531,7 @@ namespace Roguelike.LevelGeneration
                 {
                     var pathLength = distances[currentIndex] + neighbour.Distance;
                     if (pathLength < distances[neighbour.Index])
-                    {
                         distances[neighbour.Index] = pathLength;
-                    }
                 }
             }
 
@@ -797,9 +545,7 @@ namespace Roguelike.LevelGeneration
             var adjacency = new List<(int Index, float Distance)>[rooms.Count];
 
             for (var i = 0; i < rooms.Count; i++)
-            {
                 adjacency[i] = new List<(int Index, float Distance)>();
-            }
 
             foreach (var connection in roomConnections)
             {
@@ -822,9 +568,7 @@ namespace Roguelike.LevelGeneration
             for (var i = 0; i < distances.Length; i++)
             {
                 if (visited[i] || distances[i] >= closestDistance)
-                {
                     continue;
-                }
 
                 closestDistance = distances[i];
                 closestIndex = i;
@@ -877,9 +621,7 @@ namespace Roguelike.LevelGeneration
                         floorTilemap.SetColor(cell, Color.white);
                     }
                     else
-                    {
-                        wallTilemap.SetTile(cell, wallTile);
-                    }
+                        wallTilemap.SetTile(cell, _wallTile);
                 }
             }
 
@@ -898,24 +640,18 @@ namespace Roguelike.LevelGeneration
             HashSet<int> itemRoomIndexes)
         {
             if (startRoom.Contains(x, y))
-            {
-                return startFloorTile;
-            }
+                return _startFloorTile;
 
             if (bossRoom.Contains(x, y))
-            {
-                return bossFloorTile;
-            }
+                return _bossFloorTile;
 
             foreach (var itemRoomIndex in itemRoomIndexes)
             {
                 if (rooms[itemRoomIndex].Contains(x, y))
-                {
-                    return itemFloorTile;
-                }
+                    return _itemFloorTile;
             }
 
-            return floorTile;
+            return _floorTile;
         }
 
         private static bool IsValidTilemapReference(Tilemap tilemap)
@@ -927,14 +663,10 @@ namespace Roguelike.LevelGeneration
         {
             var gridObject = GameObject.Find(GridObjectName);
             if (gridObject == null)
-            {
                 return;
-            }
 
             if (gridObject.GetComponent<Grid>() == null)
-            {
                 gridObject.AddComponent<Grid>();
-            }
 
             EnsureTilemapChild(gridObject.transform, FloorTilemapName, sortingOrder: 0, isWalkableFloor: true);
             EnsureTilemapChild(gridObject.transform, WallTilemapName, sortingOrder: 1, isWalkableFloor: false);
@@ -944,22 +676,16 @@ namespace Roguelike.LevelGeneration
         {
             var tilemapTransform = gridTransform.Find(tilemapName);
             if (tilemapTransform == null)
-            {
                 return;
-            }
 
             var tilemapObject = tilemapTransform.gameObject;
 
             if (tilemapObject.GetComponent<Tilemap>() == null)
-            {
                 tilemapObject.AddComponent<Tilemap>();
-            }
 
             var renderer = tilemapObject.GetComponent<TilemapRenderer>();
             if (renderer == null)
-            {
                 renderer = tilemapObject.AddComponent<TilemapRenderer>();
-            }
 
             renderer.sortingOrder = sortingOrder;
 
@@ -967,9 +693,7 @@ namespace Roguelike.LevelGeneration
             {
                 var walkableLayer = LayerMask.NameToLayer("Walkable");
                 if (walkableLayer >= 0)
-                {
                     tilemapObject.layer = walkableLayer;
-                }
             }
             else
             {
@@ -982,31 +706,25 @@ namespace Roguelike.LevelGeneration
         {
             var tilemapCollider = wallObject.GetComponent<TilemapCollider2D>();
             if (tilemapCollider != null)
-            {
                 tilemapCollider.enabled = false;
-            }
         }
 
         private void ClearWallColliders()
         {
-            if (wallCollidersRoot != null)
+            if (_wallCollidersRoot != null)
             {
-                Destroy(wallCollidersRoot.gameObject);
-                wallCollidersRoot = null;
+                Destroy(_wallCollidersRoot.gameObject);
+                _wallCollidersRoot = null;
                 return;
             }
 
             var gridTransform = GetGridTransform();
             if (gridTransform == null)
-            {
                 return;
-            }
 
             var existingRoot = gridTransform.Find(WallCollidersRootName);
             if (existingRoot != null)
-            {
                 Destroy(existingRoot.gameObject);
-            }
         }
 
         private void BuildPerimeterWallColliders(DungeonMap map)
@@ -1014,24 +732,20 @@ namespace Roguelike.LevelGeneration
             ClearWallColliders();
 
             if (wallTilemap == null)
-            {
                 return;
-            }
 
             DisableTilemapCollider(wallTilemap.gameObject);
 
             var gridTransform = GetGridTransform();
             if (gridTransform == null)
-            {
                 return;
-            }
 
             var rootObject = new GameObject(WallCollidersRootName);
-            wallCollidersRoot = rootObject.transform;
-            wallCollidersRoot.SetParent(gridTransform, false);
+            _wallCollidersRoot = rootObject.transform;
+            _wallCollidersRoot.SetParent(gridTransform, false);
 
             var compositeObject = new GameObject(WallCompositeObjectName);
-            compositeObject.transform.SetParent(wallCollidersRoot, false);
+            compositeObject.transform.SetParent(_wallCollidersRoot, false);
             compositeObject.layer = wallTilemap.gameObject.layer;
             compositeObject.tag = "Wall";
 
@@ -1050,9 +764,7 @@ namespace Roguelike.LevelGeneration
                 for (var y = 0; y < map.Height; y++)
                 {
                     if (!IsBlockingWall(map, x, y))
-                    {
                         continue;
-                    }
 
                     var cell = new Vector3Int(x, y, 0);
                     var worldCenter = wallTilemap.GetCellCenterWorld(cell);
@@ -1077,26 +789,20 @@ namespace Roguelike.LevelGeneration
         private static bool IsBlockingWall(DungeonMap map, int x, int y)
         {
             if (!map.IsInside(x, y) || map.FloorTiles[x, y])
-            {
                 return false;
-            }
 
             for (var dx = -1; dx <= 1; dx++)
             {
                 for (var dy = -1; dy <= 1; dy++)
                 {
                     if (dx == 0 && dy == 0)
-                    {
                         continue;
-                    }
 
                     var neighborX = x + dx;
                     var neighborY = y + dy;
 
                     if (map.IsInside(neighborX, neighborY) && map.FloorTiles[neighborX, neighborY])
-                    {
                         return true;
-                    }
                 }
             }
 
@@ -1106,15 +812,11 @@ namespace Roguelike.LevelGeneration
         private Transform GetGridTransform()
         {
             if (floorTilemap == null)
-            {
                 return null;
-            }
 
             var parent = floorTilemap.transform.parent;
             if (parent != null && parent.name == GridObjectName)
-            {
                 return parent;
-            }
 
             return floorTilemap.transform;
         }
@@ -1123,9 +825,7 @@ namespace Roguelike.LevelGeneration
         {
             var gridTransform = GetGridTransform();
             if (gridTransform == null)
-            {
                 return;
-            }
 
             var position = gridTransform.position;
             gridTransform.position = new Vector3(0f, 0f, position.z);
@@ -1136,15 +836,11 @@ namespace Roguelike.LevelGeneration
             ResolvePlayerTransform();
 
             if (playerTransform == null)
-            {
                 return;
-            }
 
             var gridTransform = GetGridTransform();
             if (gridTransform == null)
-            {
                 return;
-            }
 
             var startRoomWorldCenter = GetRoomWorldCenter(StartRoom);
             var offset = playerTransform.position - startRoomWorldCenter;

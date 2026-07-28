@@ -49,7 +49,7 @@ public class MapNavigation : MonoBehaviour
     {
         transform.rotation = Quaternion.Euler(-90f, 0f, 0f);
 
-        int walkableLayer = LayerMask.NameToLayer(walkableLayerName);
+        var walkableLayer = LayerMask.NameToLayer(walkableLayerName);
         if (walkableLayer >= 0)
             _surface.layerMask = (1 << walkableLayer) | (1 << 0);
         else
@@ -62,22 +62,22 @@ public class MapNavigation : MonoBehaviour
 
     private void PrepareNavigationSources()
     {
-        int walkableLayer = LayerMask.NameToLayer(walkableLayerName);
+        var walkableLayer = LayerMask.NameToLayer(walkableLayerName);
 
-        SpriteRenderer[] renderers = FindObjectsByType<SpriteRenderer>(FindObjectsSortMode.None);
-        for (int i = 0; i < renderers.Length; i++)
+        var renderers = FindObjectsByType<SpriteRenderer>(FindObjectsSortMode.None);
+        for (var i = 0; i < renderers.Length; i++)
         {
-            GameObject go = renderers[i].gameObject;
+            var go = renderers[i].gameObject;
             if (go.GetComponent<NavMeshAgent>() != null)
                 continue;
             if (go.CompareTag("Player"))
                 continue;
 
-            NavMeshModifier modifier = go.GetComponent<NavMeshModifier>();
+            var modifier = go.GetComponent<NavMeshModifier>();
             if (modifier == null)
                 modifier = go.AddComponent<NavMeshModifier>();
 
-            bool isWalkable = walkableLayer >= 0 && go.layer == walkableLayer;
+            var isWalkable = walkableLayer >= 0 && go.layer == walkableLayer;
             if (isWalkable)
             {
                 modifier.overrideArea = false;
@@ -92,29 +92,27 @@ public class MapNavigation : MonoBehaviour
                 modifier.ignoreFromBuild = false;
             }
             else
-            {
                 modifier.ignoreFromBuild = true;
-            }
         }
     }
 
     private void PrepareTilemapSources()
     {
-        int walkableLayer = LayerMask.NameToLayer(walkableLayerName);
-        TilemapRenderer[] tilemapRenderers = FindObjectsByType<TilemapRenderer>(FindObjectsSortMode.None);
+        var walkableLayer = LayerMask.NameToLayer(walkableLayerName);
+        var tilemapRenderers = FindObjectsByType<TilemapRenderer>(FindObjectsSortMode.None);
 
-        for (int i = 0; i < tilemapRenderers.Length; i++)
+        for (var i = 0; i < tilemapRenderers.Length; i++)
         {
-            Tilemap tilemap = tilemapRenderers[i].GetComponent<Tilemap>();
+            var tilemap = tilemapRenderers[i].GetComponent<Tilemap>();
             if (tilemap == null || tilemap.layoutGrid == null)
                 continue;
 
-            GameObject go = tilemapRenderers[i].gameObject;
-            NavMeshModifier modifier = go.GetComponent<NavMeshModifier>();
+            var go = tilemapRenderers[i].gameObject;
+            var modifier = go.GetComponent<NavMeshModifier>();
             if (modifier == null)
                 modifier = go.AddComponent<NavMeshModifier>();
 
-            bool isFloor = go.name == "Floor" || (walkableLayer >= 0 && go.layer == walkableLayer);
+            var isFloor = go.name == "Floor" || (walkableLayer >= 0 && go.layer == walkableLayer);
             if (isFloor)
             {
                 modifier.overrideArea = false;
@@ -129,9 +127,7 @@ public class MapNavigation : MonoBehaviour
                 modifier.ignoreFromBuild = false;
             }
             else
-            {
                 modifier.ignoreFromBuild = true;
-            }
         }
     }
 }

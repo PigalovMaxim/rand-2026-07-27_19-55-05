@@ -11,14 +11,22 @@ public class Player : MonoBehaviour
     private Rigidbody2D _rb;
     private BoxCollider2D _collider;
     private Vector2 _moveInput;
+    private ContactFilter2D _contactFilter;
+    private readonly RaycastHit2D[] _hits = new RaycastHit2D[8];
 
     void Awake()
     {
         _rb = GetComponent<Rigidbody2D>();
         _collider = GetComponent<BoxCollider2D>();
+        _rb.bodyType = RigidbodyType2D.Kinematic;
         _rb.gravityScale = 0f;
         _rb.freezeRotation = true;
         _rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
+
+        _contactFilter = new ContactFilter2D();
+        _contactFilter.useTriggers = false;
+        _contactFilter.SetLayerMask(Physics2D.GetLayerCollisionMask(gameObject.layer));
+        _contactFilter.useLayerMask = true;
     }
 
     void Update()
@@ -29,36 +37,61 @@ public class Player : MonoBehaviour
     void FixedUpdate()
     {
         if (_moveInput.sqrMagnitude < 0.01f)
-        {
-            _rb.linearVelocity = Vector2.zero;
             return;
-        }
 
         var delta = _moveInput * (moveSpeed * Time.fixedDeltaTime);
-        var target = _rb.position + delta;
-        target = ResolveCollision(_rb.position, target);
-        _rb.MovePosition(target);
+        var position = _rb.position;
+        position = MoveAxis(position, new Vector2(delta.x, 0f));
+        position = MoveAxis(position, new Vector2(0f, delta.y));
+        _rb.MovePosition(position);
     }
 
-    private Vector2 ResolveCollision(Vector2 from, Vector2 to)
+    private Vector2 MoveAxis(Vector2 from, Vector2 delta)
     {
-        var movement = to - from;
-        if (movement.sqrMagnitude <= 0f)
-        {
+        var distance = Mathf.Abs(delta.x) + Mathf.Abs(delta.y);
+        if (distance <= 0f)
             return from;
-        }
 
-        var distance = movement.magnitude;
-        var direction = movement / distance;
-        var size = _collider.size * 0.95f;
+        var direction = delta / distance;
+        var origin = from + GetScaledOffset();
+        var castSize = GetCastSize();
+        var hitCount = Physics2D.BoxCast(
+            origin,
+            castSize,
+            0f,
+            direction,
+            _contactFilter,
+            _hits,
+            distance + skinWidth);
 
-        var hit = Physics2D.BoxCast(from, size, 0f, direction, distance + skinWidth);
-        if (hit.collider == null || hit.collider.gameObject == gameObject)
+        var allowed = distance;
+        for (var i = 0; i < hitCount; i++)
         {
-            return to;
+            var hit = _hits[i];
+            if (hit.collider == null || hit.collider.transform.IsChildOf(transform))
+                continue;
+
+            allowed = Mathf.Min(allowed, Mathf.Max(0f, hit.distance - skinWidth));
         }
 
-        return from + direction * Mathf.Max(0f, hit.distance - skinWidth);
+        return from + direction * allowed;
+    }
+
+    private Vector2 GetScaledOffset()
+    {
+        var scale = transform.lossyScale;
+        return new Vector2(_collider.offset.x * scale.x, _collider.offset.y * scale.y);
+    }
+
+    private Vector2 GetCastSize()
+    {
+        var scale = transform.lossyScale;
+        var size = new Vector2(
+            Mathf.Abs(_collider.size.x * scale.x),
+            Mathf.Abs(_collider.size.y * scale.y));
+        size.x = Mathf.Max(0.01f, size.x - skinWidth * 2f);
+        size.y = Mathf.Max(0.01f, size.y - skinWidth * 2f);
+        return size;
     }
 
     private Vector2 ReadMoveInput()
