@@ -1,97 +1,135 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
+[DefaultExecutionOrder(-50)]
 [RequireComponent(typeof(Rigidbody2D))]
 [RequireComponent(typeof(BoxCollider2D))]
 public class Player : MonoBehaviour
 {
+    private const string WallTag = "Wall";
+    private const int MaxRayHits = 16;
+
+    private static readonly RaycastHit2D[] _rayHits = new RaycastHit2D[MaxRayHits];
+
     [SerializeField] private float moveSpeed = 5f;
-    [SerializeField] private float skinWidth = 0.02f;
+    [SerializeField] private float detectionRange = 20f;
 
     private Rigidbody2D _rb;
-    private BoxCollider2D _collider;
+    private Collider2D _collider;
     private Vector2 _moveInput;
-    private ContactFilter2D _contactFilter;
-    private readonly RaycastHit2D[] _hits = new RaycastHit2D[8];
 
     void Awake()
     {
         _rb = GetComponent<Rigidbody2D>();
-        _collider = GetComponent<BoxCollider2D>();
-        _rb.bodyType = RigidbodyType2D.Kinematic;
-        _rb.gravityScale = 0f;
-        _rb.freezeRotation = true;
-        _rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
-
-        _contactFilter = new ContactFilter2D();
-        _contactFilter.useTriggers = false;
-        _contactFilter.SetLayerMask(Physics2D.GetLayerCollisionMask(gameObject.layer));
-        _contactFilter.useLayerMask = true;
+        _collider = GetComponent<Collider2D>();
     }
 
     void Update()
     {
         _moveInput = ReadMoveInput();
+        DetectEnemies();
     }
 
     void FixedUpdate()
     {
-        if (_moveInput.sqrMagnitude < 0.01f)
-            return;
-
-        var delta = _moveInput * (moveSpeed * Time.fixedDeltaTime);
-        var position = _rb.position;
-        position = MoveAxis(position, new Vector2(delta.x, 0f));
-        position = MoveAxis(position, new Vector2(0f, delta.y));
-        _rb.MovePosition(position);
+        _rb.linearVelocity = _moveInput * moveSpeed;
     }
 
-    private Vector2 MoveAxis(Vector2 from, Vector2 delta)
+    private void DetectEnemies()
     {
-        var distance = Mathf.Abs(delta.x) + Mathf.Abs(delta.y);
-        if (distance <= 0f)
-            return from;
+        var origin = (Vector2)transform.position;
+        var enemies = Enemy.ActiveEnemies;
 
-        var direction = delta / distance;
-        var origin = from + GetScaledOffset();
-        var castSize = GetCastSize();
-        var hitCount = Physics2D.BoxCast(
-            origin,
-            castSize,
-            0f,
-            direction,
-            _contactFilter,
-            _hits,
-            distance + skinWidth);
-
-        var allowed = distance;
-        for (var i = 0; i < hitCount; i++)
+        for (var i = 0; i < enemies.Count; i++)
         {
-            var hit = _hits[i];
-            if (hit.collider == null || hit.collider.transform.IsChildOf(transform))
+            var enemy = enemies[i];
+            if (enemy == null)
                 continue;
 
-            allowed = Mathf.Min(allowed, Mathf.Max(0f, hit.distance - skinWidth));
+            var enemyCenter = enemy.VisionCenter;
+            var distance = Vector2.Distance(origin, enemyCenter);
+            if (distance > detectionRange)
+                continue;
+
+            if (IsRayClearToEnemy(origin, enemyCenter, enemy))
+                enemy.SeePlayer(transform);
+        }
+    }
+
+    private bool IsRayClearToEnemy(Vector2 origin, Vector2 enemyCenter, Enemy enemy)
+    {
+        var delta = enemyCenter - origin;
+        var distance = delta.magnitude;
+        if (distance <= Mathf.Epsilon)
+            return true;
+
+        var direction = delta / distance;
+        var hitCount = Physics2D.RaycastNonAlloc(origin, direction, _rayHits, distance);
+
+        for (var i = 0; i < hitCount; i++)
+        {
+            var hitCollider = _rayHits[i].collider;
+            if (hitCollider == null || hitCollider == _collider)
+                continue;
+
+            if (hitCollider.CompareTag(WallTag))
+                return false;
+
+            if (BelongsToEnemy(hitCollider, enemy))
+                return true;
         }
 
-        return from + direction * allowed;
+        return true;
     }
 
-    private Vector2 GetScaledOffset()
+    private static bool BelongsToEnemy(Collider2D hitCollider, Enemy enemy)
     {
-        var scale = transform.lossyScale;
-        return new Vector2(_collider.offset.x * scale.x, _collider.offset.y * scale.y);
+        return hitCollider.transform == enemy.transform ||
+               hitCollider.transform.IsChildOf(enemy.transform);
     }
 
-    private Vector2 GetCastSize()
+    private void OnDrawGizmos()
     {
-        var scale = transform.lossyScale;
-        var size = new Vector2(
-            Mathf.Abs(_collider.size.x * scale.x),
-            Mathf.Abs(_collider.size.y * scale.y));
-        size.x = Mathf.Max(0.01f, size.x - skinWidth * 2f);
-        size.y = Mathf.Max(0.01f, size.y - skinWidth * 2f);
-        return size;
+        Gizmos.color = new Color(0.3f, 0.7f, 1f, 0.25f);
+        Gizmos.DrawWireSphere(transform.position, detectionRange);
+
+        var origin = (Vector2)transform.position;
+
+        if (Application.isPlaying)
+            DrawEnemyVisionRays(origin, Enemy.ActiveEnemies);
+        else
+            DrawEnemyVisionRays(origin, FindObjectsByType<Enemy>(FindObjectsSortMode.None));
+    }
+
+    private void DrawEnemyVisionRays(Vector2 origin, IReadOnlyList<Enemy> enemies)
+    {
+        for (var i = 0; i < enemies.Count; i++)
+            DrawEnemyVisionRay(origin, enemies[i]);
+    }
+
+    private void DrawEnemyVisionRays(Vector2 origin, Enemy[] enemies)
+    {
+        for (var i = 0; i < enemies.Length; i++)
+            DrawEnemyVisionRay(origin, enemies[i]);
+    }
+
+    private void DrawEnemyVisionRay(Vector2 origin, Enemy enemy)
+    {
+        if (enemy == null)
+            return;
+
+        var enemyCenter = enemy.VisionCenter;
+        var distance = Vector2.Distance(origin, enemyCenter);
+        var inRange = distance <= detectionRange;
+        var clear = inRange && IsRayClearToEnemy(origin, enemyCenter, enemy);
+
+        Gizmos.color = !inRange
+            ? new Color(0.5f, 0.5f, 0.5f, 0.35f)
+            : clear
+                ? new Color(0.2f, 1f, 0.35f, 0.9f)
+                : new Color(1f, 0.2f, 0.2f, 0.9f);
+        Gizmos.DrawLine(origin, enemyCenter);
     }
 
     private Vector2 ReadMoveInput()
