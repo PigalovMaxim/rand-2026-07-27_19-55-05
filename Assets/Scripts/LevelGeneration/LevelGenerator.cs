@@ -10,6 +10,7 @@ namespace Roguelike.LevelGeneration
     [DefaultExecutionOrder(50)]
     public sealed partial class LevelGenerator : MonoBehaviour
     {
+        public static event System.Action LevelGenerated;
         private const string FloorTilemapName = "Floor";
         private const string WallTilemapName = "Wall";
         private const string GridObjectName = "Grid";
@@ -122,6 +123,7 @@ namespace Roguelike.LevelGeneration
             SpawnItems(_generatedItemRooms);
             GeneratedRooms = new List<Room>(rooms);
             FinalizeGameplay(rooms, startRoomIndex);
+            NotifyLevelGenerated();
 
             Debug.Log(
                 $"LevelGenerator: сгенерировано комнат {rooms.Count}, карта {mapWidth}x{mapHeight}. " +
@@ -159,10 +161,16 @@ namespace Roguelike.LevelGeneration
             BuildPerimeterWallColliders(map);
             GeneratedRooms = rooms;
             FinalizeGameplay(rooms, startRoomIndex: 0);
+            NotifyLevelGenerated();
 
             Debug.Log(
                 $"LevelGenerator: тестовый режим — прямоугольная комната {roomWidth}x{roomHeight} " +
                 $"в центре карты {mapWidth}x{mapHeight}.");
+        }
+
+        private static void NotifyLevelGenerated()
+        {
+            LevelGenerated?.Invoke();
         }
 
         private bool EnsureReferences()
