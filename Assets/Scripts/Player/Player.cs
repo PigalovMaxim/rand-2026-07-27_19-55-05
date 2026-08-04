@@ -14,6 +14,7 @@ public class Player : MonoBehaviour
 
     [SerializeField] private float moveSpeed = 5f;
     [SerializeField] private float detectionRange = 20f;
+    [SerializeField] private Joystick _moveJoystick;
 
     private Rigidbody2D _rb;
     private Collider2D _collider;
@@ -23,6 +24,7 @@ public class Player : MonoBehaviour
     {
         _rb = GetComponent<Rigidbody2D>();
         _collider = GetComponent<Collider2D>();
+        ResolveMoveJoystick();
     }
 
     void Update()
@@ -133,6 +135,55 @@ public class Player : MonoBehaviour
     }
 
     private Vector2 ReadMoveInput()
+    {
+        ResolveMoveJoystick();
+
+        var joystick = ReadJoystickInput();
+        if (joystick.sqrMagnitude > 0f)
+            return joystick;
+
+        var gamepad = ReadGamepadInput();
+        if (gamepad.sqrMagnitude > 0f)
+            return gamepad;
+
+        return ReadKeyboardInput();
+    }
+
+    private void ResolveMoveJoystick()
+    {
+        if (_moveJoystick != null)
+            return;
+
+        var mobileControls = FindAnyObjectByType<MobileControls>();
+        if (mobileControls != null && mobileControls.Joystick != null)
+        {
+            _moveJoystick = mobileControls.Joystick;
+            return;
+        }
+
+        _moveJoystick = FindAnyObjectByType<Joystick>();
+    }
+
+    private Vector2 ReadJoystickInput()
+    {
+        if (_moveJoystick == null)
+            return Vector2.zero;
+
+        var direction = _moveJoystick.Direction;
+        return direction.sqrMagnitude > 1f ? direction.normalized : direction;
+    }
+
+    private static Vector2 ReadGamepadInput()
+    {
+        var gamepad = Gamepad.current;
+        if (gamepad == null)
+            return Vector2.zero;
+
+        var stick = gamepad.leftStick.ReadValue();
+        return stick.sqrMagnitude > 1f ? stick.normalized : stick;
+    }
+
+    private Vector2 ReadKeyboardInput()
     {
         var keyboard = Keyboard.current;
         if (keyboard == null)
